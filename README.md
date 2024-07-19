@@ -15,4 +15,5 @@ Instructions
 
 Version History
 --
-07/15/2024, v1.0: Verified basic common installation for Ubuntu and EL 9
+07/15/2024, v1.0: Verified basic common installation for Ubuntu and EL9
+07/19/2024, v1.1: Added CGroups to k8s install to prevent kubelet restarts on EL9

@@ -1,9 +1,10 @@
 CURRENT_DIR=`pwd`
+INSTALL_KUBERENETS_VERSION="v1.1"
 
 # Display help menu
 DisplayHelp()
 {
-    echo "This script will configure the installation and install Lightbits on VMs in the cloud or generic server. Script version: $INSTALL_LIGHTBITS_VERSION
+    echo "This script will configure the installation and install Lightbits on VMs in the cloud or generic server. Script version: $INSTALL_KUBERNETES_VERSION
    
     Syntax: ${0##*/} [-o|m|w|u|p]
     options:                                     example:
@@ -19,6 +20,15 @@ DisplayHelp()
 
     Full Example - Ubuntu
     ${0##*/} -o deb -m \"10.0.0.1\" -w \"10.0.0.2,10.0.0.3,10.0.0.4\" -u root -p 'p@ssword12345!!'
+
+    After
+    sudo kubeadm init --control-plane-endpoint=<your_master_node_hostname>
+
+    mkdir -p $HOME/.kube
+    sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
+    sudo chown $(id -u):$(id -g) $HOME/.kube/config
+
+    kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.25.0/manifests/calico.yaml
 "
 }
 
@@ -298,29 +308,32 @@ RunInstall()
         read -r -d '' ELCommonCommands << EOF
 sudo swapoff -a
 sudo sed -i.bak '/ swap / s/^\(.*\)$/#\1/g' /etc/fstab
-sudo sed -i 's/^SELINUX=enforcing$/SELINUX=permissive/' /etc/selinux/config
+sudo sed -i 's/^SELINUX=enforcing$/SELINUX=disabled/' /etc/selinux/config
 sudo dnf install -y iproute-tc
 sudo systemctl stop firewalld
 sudo systemctl disable firewalld
 sudo dnf install -y yum-utils
-sudo yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+sudo yum-config-manager --add-repo https://download.docker.com/linux/rhel/docker-ce.repo
 sudo dnf install -y --nogpgcheck docker-ce docker-ce-cli containerd.io docker-compose-plugin
 sudo systemctl start docker
 sudo systemctl enable docker
 cat > /etc/yum.repos.d/kubernetes.repo << EOL
 [kubernetes]
 name=Kubernetes
-baseurl=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/
+baseurl=https://pkgs.k8s.io/core:/stable:/v1.30/rpm/
 enabled=1
 gpgcheck=1
-gpgkey=https://pkgs.k8s.io/core:/stable:/v1.29/rpm/repodata/repomd.xml.key
+gpgkey=https://pkgs.k8s.io/core:/stable:/v1.30/rpm/repodata/repomd.xml.key
 exclude=kubelet kubeadm kubectl cri-tools kubernetes-cni
 EOL
 sudo dnf install -y kubeadm kubelet kubectl --disableexcludes=kubernetes
 sudo systemctl enable kubelet
 sudo systemctl start kubelet
-containerd config default > /etc/containerd/config.toml
-sudo systemctl restart containerd
+containerd config default | tee /etc/containerd/config.toml
+sed -i 's/SystemdCgroup = false/SystemdCgroup = true/g' /etc/containerd/config.toml  
+service containerd restart
+service kubelet restart
+curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 EOF
 
         sshpass -p ${password} ${PSSH_COMMAND} -h "${CURRENT_DIR}/${clusterName}/all_clients" -x '-o StrictHostKeyChecking=false' -l root -A -t 900 -i "${ELCommonCommands}"
@@ -363,11 +376,12 @@ sudo sed -i 's/SystemdCgroup \= false/SystemdCgroup \= true/g' /etc/containerd/c
 sudo systemctl restart containerd
 sudo systemctl enable containerd
 sudo apt-get install -y apt-transport-https ca-certificates curl gpg
-curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.29/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.29/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.30/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.30/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list
 sudo apt-get update
 sudo apt-get install -y kubelet kubeadm kubectl
 sudo apt-mark hold kubelet kubeadm kubectl
+curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash
 EOF
 
         sshpass -p ${password} ${PSSH_COMMAND} -h "${CURRENT_DIR}/${clusterName}/all_clients" -x '-o StrictHostKeyChecking=false' -l root -A -t 900 -i "${UbuntuCommonCommands}"
